@@ -22,7 +22,6 @@ export interface Member {
   avatar: string;
   email?: string;
   phone?: string;
-  permission?: 'total' | 'lancador' | 'leitura';
 }
 
 export interface CategoryBudget {
@@ -96,43 +95,3 @@ export interface DueReminder {
 }
 
 export type ProfileMode = 'familia' | 'empresa';
-
-// --- MULTI-TENANT, ROLES & LICENCIAMENTO (REVENDA) ---
-
-export type UserRole = 'superadmin' | 'admin' | 'membro';
-
-export type MemberPermission = 'total' | 'lancador' | 'leitura';
-
-export type LicensePlan = 'basico' | 'pro' | 'empresa_plus' | 'vitalicio';
-
-export type LicenseStatus = 'ativa' | 'pendente' | 'expirada' | 'bloqueada';
-
-export interface ClientLicense {
-  id: string;
-  clientName: string; // Ex: "Família Silva" ou "Comércio Lima & Filhos Ltda"
-  adminEmail: string;
-  adminName: string;
-  phone?: string;
-  licenseKey: string; // Ex: "FIN-2026-X9A7-B42"
-  plan: LicensePlan;
-  planName: string;
-  price: number; // Valor da venda em R$
-  billingCycle: 'mensal' | 'anual' | 'unico';
-  status: LicenseStatus;
-  createdAt: string;
-  expiresAt: string;
-  maxMembers: number;
-  profileMode: ProfileMode;
-  notes?: string;
-}
-
-export interface AuthUser {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  licenseId?: string; // ID da licença comprada (para admin e membros)
-  licenseName?: string;
-  permission?: MemberPermission; // Se for membro comum
-  avatar?: string;
-}

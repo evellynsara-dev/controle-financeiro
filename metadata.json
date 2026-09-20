@@ -1,6 +1,6 @@
 {
   "name": "Controle Financeiro Compartilhado",
-  "description": "Sistema de controle financeiro familiar e empresarial multi-tenant com painel de Superadmin para revenda de licenças, painel de Admin comprador e controle de acessos por membros da família ou equipe.",
+  "description": "Sistema unificado de controle financeiro para famílias e empresas compartilharem receitas, despesas, previsão de faturas e relatórios.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

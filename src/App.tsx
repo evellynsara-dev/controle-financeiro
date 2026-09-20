@@ -33,14 +33,6 @@ import { ExportAndShareModal } from './components/ExportAndShareModal';
 import { GoogleDriveSyncModal } from './components/GoogleDriveSyncModal';
 import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { MembersModal } from './components/MembersModal';
-import { SuperadminModal } from './components/SuperadminModal';
-import { AdminLicenseModal } from './components/AdminLicenseModal';
-import { AuthUser, ClientLicense } from './types';
-import {
-  getCurrentAuthUser,
-  setCurrentAuthUser,
-  PRESET_USERS,
-} from './services/authService';
 import {
   GoogleDriveUser,
   GoogleDriveConfig,
@@ -75,11 +67,6 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<GoogleDriveUser | null>(null);
   const [driveConfig, setDriveConfig] = useState<GoogleDriveConfig>(() => getGoogleDriveConfig());
 
-  // Multi-tenant & Roles Auth State
-  const [authUser, setAuthUser] = useState<AuthUser>(() => getCurrentAuthUser());
-  const [isSuperadminModalOpen, setIsSuperadminModalOpen] = useState(false);
-  const [isAdminLicenseModalOpen, setIsAdminLicenseModalOpen] = useState(false);
-
   // Modals state
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -89,40 +76,6 @@ export default function App() {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
-
-  // Impersonate / Enter as specific client (Superadmin capability)
-  const handleImpersonateClient = (license: ClientLicense) => {
-    const user: AuthUser = {
-      id: `usr-admin-${license.id}`,
-      email: license.adminEmail,
-      name: `${license.adminName} (Admin)`,
-      role: 'admin',
-      licenseId: license.id,
-      licenseName: license.clientName,
-      avatar: '👔',
-    };
-    setAuthUser(user);
-    setCurrentAuthUser(user);
-    if (license.profileMode !== profileMode) {
-      handleToggleProfile(license.profileMode);
-    }
-  };
-
-  // Switch to specific member perspective
-  const handleSwitchToMember = (member: Member) => {
-    const user: AuthUser = {
-      id: `usr-${member.id}`,
-      email: member.email || `${member.name.toLowerCase().replace(/\s+/g, '')}@empresa.com`,
-      name: member.name,
-      role: 'membro',
-      licenseId: authUser.licenseId,
-      licenseName: authUser.licenseName,
-      permission: member.permission || 'lancador',
-      avatar: member.avatar,
-    };
-    setAuthUser(user);
-    setCurrentAuthUser(user);
-  };
 
   // Initialize Google Auth state listener
   useEffect(() => {
@@ -416,81 +369,16 @@ export default function App() {
           setSelectedYear(y);
         }}
         dueReminders={dueReminders}
-        currentUser={authUser}
-        onUserChange={setAuthUser}
-        onOpenSuperadminModal={() => setIsSuperadminModalOpen(true)}
-        onOpenAdminLicenseModal={() => setIsAdminLicenseModalOpen(true)}
         onOpenNewTransaction={() => {
-          if (authUser.role === 'membro' && authUser.permission === 'leitura') return;
           setEditingTransaction(null);
           setDefaultTxType('saida');
           setIsTxModalOpen(true);
         }}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
-        onOpenMembersModal={() => {
-          if (authUser.role === 'admin') {
-            setIsAdminLicenseModalOpen(true);
-          } else {
-            setIsMembersModalOpen(true);
-          }
-        }}
+        onOpenMembersModal={() => setIsMembersModalOpen(true)}
         onMarkAsPaid={handleMarkAsPaid}
       />
-
-      {/* Role Context Notification Bar */}
-      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-2 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2 flex-wrap">
-          {authUser.role === 'superadmin' ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
-              👑 Superadmin (Dono da Revenda de Software)
-            </span>
-          ) : authUser.role === 'admin' ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-bold bg-blue-100 text-blue-900 border border-blue-200">
-              🏢 Admin da Organização: {authUser.licenseName || 'Cliente Comprador'}
-            </span>
-          ) : authUser.permission === 'leitura' ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-bold bg-slate-100 text-slate-800 border border-slate-200">
-              👁️ Membro ({authUser.name}): Somente Leitura
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
-              ✍️ Membro ({authUser.name}): Operador / Lançador
-            </span>
-          )}
-
-          <span className="text-slate-500 hidden md:inline">
-            {authUser.role === 'superadmin'
-              ? 'Acesso irrestrito a todas as contas, criação de chaves e métricas financeiras de revenda.'
-              : authUser.role === 'admin'
-              ? 'Você gerencia seus membros da equipe/família e define permissões de lançamentos.'
-              : authUser.permission === 'leitura'
-              ? 'Você tem permissão para visualizar relatórios e gráficos, sem editar registros.'
-              : 'Você tem permissão de adicionar despesas, receitas e marcar faturas como quitadas.'}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {authUser.role === 'superadmin' && (
-            <button
-              type="button"
-              onClick={() => setIsSuperadminModalOpen(true)}
-              className="font-bold text-amber-800 hover:text-amber-950 underline text-xs"
-            >
-              Abrir Painel de Revenda →
-            </button>
-          )}
-          {authUser.role === 'admin' && (
-            <button
-              type="button"
-              onClick={() => setIsAdminLicenseModalOpen(true)}
-              className="font-bold text-blue-700 hover:text-blue-900 underline text-xs"
-            >
-              Gerenciar Licença e Membros →
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -538,9 +426,7 @@ export default function App() {
           transactions={currentMonthTransactions}
           members={members}
           budgets={budgets}
-          isReadOnly={authUser.role === 'membro' && authUser.permission === 'leitura'}
           onEditTransaction={(tx) => {
-            if (authUser.role === 'membro' && authUser.permission === 'leitura') return;
             setEditingTransaction(tx);
             setIsTxModalOpen(true);
           }}
@@ -641,30 +527,6 @@ export default function App() {
         members={members}
         periodName={periodName}
         onRestoreSuccess={handleRestoreSuccess}
-      />
-
-      {/* Superadmin Reseller Management Modal */}
-      <SuperadminModal
-        isOpen={isSuperadminModalOpen}
-        onClose={() => setIsSuperadminModalOpen(false)}
-        onImpersonateClient={(license) => {
-          handleImpersonateClient(license);
-          setIsSuperadminModalOpen(false);
-        }}
-      />
-
-      {/* Client Admin License & Members Modal */}
-      <AdminLicenseModal
-        isOpen={isAdminLicenseModalOpen}
-        onClose={() => setIsAdminLicenseModalOpen(false)}
-        currentUser={authUser}
-        members={members}
-        profileMode={profileMode}
-        onSaveMembers={setMembers}
-        onSwitchToMember={(m) => {
-          handleSwitchToMember(m);
-          setIsAdminLicenseModalOpen(false);
-        }}
       />
     </div>
   );
