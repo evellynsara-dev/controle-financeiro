@@ -5,7 +5,6 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   signOut,
-  User,
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Transaction, FinancialSummary, CategoryBudget, Member } from '../types';
@@ -14,21 +13,34 @@ import { Transaction, FinancialSummary, CategoryBudget, Member } from '../types'
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 
-// Configure Google Auth Provider with Google Drive & Sheets Scopes
-const SCOPES = [
+// Workspace Scopes for Google Drive & Google Sheets
+export const WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/userinfo.email',
 ];
 
 const provider = new GoogleAuthProvider();
-SCOPES.forEach((scope) => provider.addScope(scope));
+WORKSPACE_SCOPES.forEach((scope) => provider.addScope(scope));
 provider.setCustomParameters({
   prompt: 'select_account',
 });
 
-// Cache the access token in memory only (never in localStorage/sessionStorage)
+export interface GoogleDriveUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+}
+
+// In-memory token cache (never stored in localStorage/sessionStorage)
 let cachedAccessToken: string | null = null;
+let cachedUser: GoogleDriveUser | null = null;
 let isSigningIn = false;
+
+type AuthListener = (user: GoogleDriveUser | null, token: string | null) => void;
+const authListeners: AuthListener[] = [];
 
 export interface GoogleDriveConfig {
   spreadsheetId: string | null;
@@ -42,6 +54,7 @@ export interface GoogleDriveConfig {
 }
 
 const STORAGE_KEY = 'cf_google_drive_sheets_config';
+const USER_PROFILE_KEY = 'cf_google_user_profile';
 
 export const DEFAULT_DRIVE_CONFIG: GoogleDriveConfig = {
   spreadsheetId: null,
@@ -71,35 +84,202 @@ export const saveGoogleDriveConfig = (config: GoogleDriveConfig): void => {
   }
 };
 
-// Listen for Auth Changes
-export const initGoogleAuth = (
-  onAuthSuccess?: (user: User, token: string | null) => void,
-  onAuthSignOut?: () => void
-) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-    } else {
-      cachedAccessToken = null;
-      if (onAuthSignOut) onAuthSignOut();
+// Restore cached user profile (without token) on init
+const getStoredUserProfile = (): GoogleDriveUser | null => {
+  try {
+    const saved = sessionStorage.getItem(USER_PROFILE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+};
+
+// Dynamic loader for Google Identity Services script
+export const loadGsiScript = (): Promise<void> => {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve();
+    if ((window as any).google?.accounts?.oauth2) {
+      return resolve();
+    }
+    const existing = document.getElementById('google-gsi-client');
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => resolve());
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'google-gsi-client';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    document.head.appendChild(script);
+  });
+};
+
+// Fetch Google Profile information using access token
+const fetchGoogleUserInfo = async (token: string): Promise<GoogleDriveUser> => {
+  const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error('Não foi possível obter os dados do perfil Google.');
+  }
+
+  const data = await res.json();
+  return {
+    uid: data.sub || String(Date.now()),
+    email: data.email || null,
+    displayName: data.name || data.email || 'Usuário Google',
+    photoURL: data.picture || null,
+  };
+};
+
+// Request OAuth Access Token using Google Identity Services
+const requestTokenViaGSI = async (clientId: string): Promise<string> => {
+  await loadGsiScript();
+
+  return new Promise((resolve, reject) => {
+    const google = (window as any).google;
+    if (!google?.accounts?.oauth2) {
+      return reject(new Error('Google Identity Services ainda está inicializando. Tente novamente em alguns segundos.'));
+    }
+
+    try {
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: WORKSPACE_SCOPES.join(' '),
+        callback: (response: any) => {
+          if (response.error) {
+            if (response.error === 'popup_closed_by_user' || response.error === 'access_denied') {
+              reject(new Error('Autorização cancelada pelo usuário.'));
+            } else {
+              reject(new Error(response.error_description || response.error || 'Erro na autenticação do Google.'));
+            }
+            return;
+          }
+          if (!response.access_token) {
+            reject(new Error('Nenhum token de acesso retornado pelo Google.'));
+            return;
+          }
+          resolve(response.access_token);
+        },
+        error_callback: (err: any) => {
+          reject(new Error(err?.message || 'Falha na janela de autenticação do Google.'));
+        },
+      });
+
+      tokenClient.requestAccessToken({ prompt: 'select_account' });
+    } catch (err: any) {
+      reject(err);
     }
   });
 };
 
-// Sign in with Google (Popup)
-export const signInWithGoogle = async (): Promise<{ user: User; accessToken: string }> => {
+// Listen for Auth Changes
+export const initGoogleAuth = (
+  onAuthSuccess?: (user: GoogleDriveUser, token: string | null) => void,
+  onAuthSignOut?: () => void
+) => {
+  const initialProfile = getStoredUserProfile();
+  if (initialProfile && !cachedUser) {
+    cachedUser = initialProfile;
+  }
+
+  const listener: AuthListener = (user, token) => {
+    if (user) {
+      if (onAuthSuccess) onAuthSuccess(user, token);
+    } else {
+      if (onAuthSignOut) onAuthSignOut();
+    }
+  };
+
+  authListeners.push(listener);
+
+  if (cachedUser) {
+    listener(cachedUser, cachedAccessToken);
+  }
+
+  const unsubFirebase = onAuthStateChanged(auth, async (firebaseUser) => {
+    if (firebaseUser && !cachedUser) {
+      const gUser: GoogleDriveUser = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName,
+        photoURL: firebaseUser.photoURL,
+      };
+      cachedUser = gUser;
+      sessionStorage.setItem(USER_PROFILE_KEY, JSON.stringify(gUser));
+      listener(gUser, cachedAccessToken);
+    }
+  });
+
+  return () => {
+    const idx = authListeners.indexOf(listener);
+    if (idx !== -1) authListeners.splice(idx, 1);
+    unsubFirebase();
+  };
+};
+
+// Sign in with Google (GIS primary for Workspace APIs, with seamless fallback)
+export const signInWithGoogle = async (): Promise<{ user: GoogleDriveUser; accessToken: string }> => {
+  isSigningIn = true;
   try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Não foi possível obter o token de acesso da sua conta Google.');
+    const clientId = firebaseConfig.oAuthClientId;
+    let token: string | null = null;
+    let user: GoogleDriveUser | null = null;
+
+    // 1. Preferred: Google Identity Services (GSI) Token Client
+    // This avoids Firebase auth/unauthorized-domain errors on Cloud Run / preview domains
+    if (clientId) {
+      try {
+        token = await requestTokenViaGSI(clientId);
+        user = await fetchGoogleUserInfo(token);
+      } catch (gsiErr: any) {
+        console.warn('Google Identity Services attempt:', gsiErr);
+        if (gsiErr.message?.includes('cancelada')) {
+          throw gsiErr;
+        }
+      }
     }
 
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
+    // 2. Fallback to Firebase Popup if GSI is not available
+    if (!token || !user) {
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) {
+        throw new Error('Não foi possível obter o token de acesso da sua conta Google.');
+      }
+      token = credential.accessToken;
+      user = {
+        uid: result.user.uid,
+        email: result.user.email,
+        displayName: result.user.displayName,
+        photoURL: result.user.photoURL,
+      };
+    }
+
+    cachedAccessToken = token;
+    cachedUser = user;
+    sessionStorage.setItem(USER_PROFILE_KEY, JSON.stringify(user));
+
+    authListeners.forEach((l) => l(user, token));
+
+    return { user, accessToken: token };
   } catch (error: any) {
     console.error('Erro no login do Google:', error);
+    if (error.code === 'auth/unauthorized-domain') {
+      throw new Error(
+        'Domínio não cadastrado no Firebase Auth. Tentando conectar diretamente via Google Identity Services...'
+      );
+    }
+    if (error.code === 'auth/popup-closed-by-user') {
+      throw new Error('Janela de login foi fechada antes de concluir.');
+    }
     throw error;
   } finally {
     isSigningIn = false;
@@ -108,8 +288,24 @@ export const signInWithGoogle = async (): Promise<{ user: User; accessToken: str
 
 // Sign out
 export const signOutGoogle = async (): Promise<void> => {
-  await signOut(auth);
+  try {
+    if (cachedAccessToken && (window as any).google?.accounts?.oauth2?.revoke) {
+      (window as any).google.accounts.oauth2.revoke(cachedAccessToken, () => {});
+    }
+  } catch (err) {
+    console.warn('Revoke token warning:', err);
+  }
+
+  try {
+    await signOut(auth);
+  } catch {
+    // Ignore
+  }
+
   cachedAccessToken = null;
+  cachedUser = null;
+  sessionStorage.removeItem(USER_PROFILE_KEY);
+  authListeners.forEach((l) => l(null, null));
 };
 
 // Get current in-memory access token

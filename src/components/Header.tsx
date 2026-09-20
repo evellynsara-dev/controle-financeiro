@@ -17,8 +17,7 @@ import {
 import { ProfileMode, DueReminder } from '../types';
 import { formatBRL, formatDateBR } from '../services/exportService';
 import { playNotificationSound, requestPushPermission } from '../services/notifications';
-import { User } from 'firebase/auth';
-import { GoogleDriveConfig } from '../services/googleDriveService';
+import { GoogleDriveConfig, GoogleDriveUser } from '../services/googleDriveService';
 
 interface HeaderProps {
   profileMode: ProfileMode;
@@ -27,7 +26,7 @@ interface HeaderProps {
   selectedYear: number;
   onChangeMonth: (month: number, year: number) => void;
   dueReminders: DueReminder[];
-  currentUser: User | null;
+  currentUser: GoogleDriveUser | null;
   driveConfig: GoogleDriveConfig;
   onOpenNewTransaction: () => void;
   onOpenExportModal: () => void;

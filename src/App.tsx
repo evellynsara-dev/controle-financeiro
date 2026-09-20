@@ -32,8 +32,8 @@ import { TransactionModal } from './components/TransactionModal';
 import { ExportAndShareModal } from './components/ExportAndShareModal';
 import { GoogleDriveSyncModal } from './components/GoogleDriveSyncModal';
 import { MembersModal } from './components/MembersModal';
-import { User } from 'firebase/auth';
 import {
+  GoogleDriveUser,
   GoogleDriveConfig,
   getGoogleDriveConfig,
   saveGoogleDriveConfig,
@@ -63,7 +63,7 @@ export default function App() {
   const [accounts, setAccounts] = useState<PaymentAccount[]>(() => getAccounts(getProfileMode()));
 
   // Google Drive & Auth State
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<GoogleDriveUser | null>(null);
   const [driveConfig, setDriveConfig] = useState<GoogleDriveConfig>(() => getGoogleDriveConfig());
 
   // Modals state

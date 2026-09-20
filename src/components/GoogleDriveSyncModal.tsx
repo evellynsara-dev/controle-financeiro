@@ -15,7 +15,6 @@ import {
   Layers,
   ArrowRight,
 } from 'lucide-react';
-import { User } from 'firebase/auth';
 import {
   Transaction,
   FinancialSummary,
@@ -23,6 +22,7 @@ import {
   Member,
 } from '../types';
 import {
+  GoogleDriveUser,
   GoogleDriveConfig,
   getGoogleDriveConfig,
   saveGoogleDriveConfig,
@@ -39,8 +39,8 @@ import { exportToGoogleSheetsBackup } from '../services/exportService';
 interface GoogleDriveSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: User | null;
-  onUserChange: (user: User | null) => void;
+  currentUser: GoogleDriveUser | null;
+  onUserChange: (user: GoogleDriveUser | null) => void;
   transactions: Transaction[];
   summary: FinancialSummary;
   budgets: CategoryBudget[];
