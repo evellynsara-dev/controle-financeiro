@@ -246,7 +246,14 @@ export const signInWithGoogle = async (): Promise<{ user: GoogleDriveUser; acces
     } catch (fbErr: any) {
       console.warn('Firebase signInWithPopup avisou:', fbErr);
       if (fbErr.code === 'auth/popup-closed-by-user') {
-        throw new Error('Janela de login foi fechada antes de concluir.');
+        const cancelErr = new Error('A janela de login do Google foi fechada antes da confirmação. Clique novamente em "Entrar com o Google" quando desejar.');
+        (cancelErr as any).code = 'auth/popup-closed-by-user';
+        throw cancelErr;
+      }
+      if (fbErr.code === 'auth/popup-blocked') {
+        const blockErr = new Error('O navegador bloqueou a janela pop-up do Google. Permita pop-ups para este site para fazer login com sua conta Google.');
+        (blockErr as any).code = 'auth/popup-blocked';
+        throw blockErr;
       }
       // If Firebase failed (e.g. domain authorization propagation delay), attempt GSI fallback
       const clientId = firebaseConfig.oAuthClientId;
@@ -282,7 +289,14 @@ export const signInWithGoogle = async (): Promise<{ user: GoogleDriveUser; acces
       );
     }
     if (error.code === 'auth/popup-closed-by-user') {
-      throw new Error('Janela de login foi fechada antes de concluir.');
+      const cancelErr = new Error('A janela de login do Google foi fechada antes da confirmação. Clique novamente em "Entrar com o Google" quando desejar.');
+      (cancelErr as any).code = 'auth/popup-closed-by-user';
+      throw cancelErr;
+    }
+    if (error.code === 'auth/popup-blocked') {
+      const blockErr = new Error('O navegador bloqueou a janela pop-up do Google. Permita pop-ups para este site para fazer login.');
+      (blockErr as any).code = 'auth/popup-blocked';
+      throw blockErr;
     }
     throw error;
   } finally {

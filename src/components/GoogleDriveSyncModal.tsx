@@ -112,12 +112,25 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
         }
       }
     } catch (err: any) {
-      setFeedback({
-        type: 'error',
-        message:
-          err.message ||
-          'Erro ao fazer login com o Google. Por favor, tente novamente.',
-      });
+      const isUserCancellation =
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.message?.includes('fechada') ||
+        err?.message?.includes('cancelada');
+
+      if (isUserCancellation) {
+        setFeedback({
+          type: 'info',
+          message:
+            'A janela de login do Google foi fechada. Clique em "Entrar com o Google" quando quiser conectar.',
+        });
+      } else {
+        setFeedback({
+          type: 'error',
+          message:
+            err.message ||
+            'Erro ao fazer login com o Google. Por favor, tente novamente.',
+        });
+      }
     } finally {
       setIsLoggingIn(false);
     }
