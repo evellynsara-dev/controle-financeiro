@@ -12,10 +12,12 @@ import {
   Clock,
   Volume2,
   FileSpreadsheet,
+  Database,
 } from 'lucide-react';
 import { ProfileMode, DueReminder, GoogleSheetsConfig } from '../types';
 import { formatBRL, formatDateBR } from '../services/exportService';
 import { playNotificationSound, requestPushPermission } from '../services/notifications';
+import { isSupabaseConfigured } from '../services/storage';
 
 interface HeaderProps {
   profileMode: ProfileMode;
@@ -28,6 +30,7 @@ interface HeaderProps {
   onOpenNewTransaction: () => void;
   onOpenExportModal: () => void;
   onOpenSheetsModal: () => void;
+  onOpenSupabaseModal?: () => void;
   onOpenMembersModal: () => void;
   onMarkAsPaid: (transactionId: string) => void;
 }
@@ -48,10 +51,12 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNewTransaction,
   onOpenExportModal,
   onOpenSheetsModal,
+  onOpenSupabaseModal,
   onOpenMembersModal,
   onMarkAsPaid,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
+  const supabaseConfigured = isSupabaseConfigured();
   const [pushEnabled, setPushEnabled] = useState(
     typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
   );
@@ -184,6 +189,27 @@ export const Header: React.FC<HeaderProps> = ({
               {sheetsConfig.syncStatus === 'success' && (
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
               )}
+            </button>
+
+            {/* Supabase Cloud Sync Button */}
+            <button
+              id="btn-supabase-sync"
+              type="button"
+              onClick={onOpenSupabaseModal}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                supabaseConfigured
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-2xs'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Conexão e Sincronização com Supabase (PostgreSQL Cloud)"
+            >
+              <Database className={`w-3.5 h-3.5 ${supabaseConfigured ? 'text-emerald-600' : 'text-slate-500'}`} />
+              <span className="hidden lg:inline">Supabase</span>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  supabaseConfigured ? 'bg-emerald-500' : 'bg-slate-300'
+                }`}
+              ></span>
             </button>
 
             {/* Notification Bell with Badge */}

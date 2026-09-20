@@ -35,6 +35,14 @@ import { TransactionModal } from './components/TransactionModal';
 import { ExportAndShareModal } from './components/ExportAndShareModal';
 import { GoogleSheetsSyncModal } from './components/GoogleSheetsSyncModal';
 import { MembersModal } from './components/MembersModal';
+import { SupabaseSyncModal } from './components/SupabaseSyncModal';
+import {
+  isSupabaseConfigured,
+  fetchTransactionsFromSupabase,
+  fetchMembersFromSupabase,
+  fetchBudgetsFromSupabase,
+  fetchAccountsFromSupabase,
+} from './services/storage';
 
 export default function App() {
   const [profileMode, setProfileModeState] = useState<ProfileMode>(() => getProfileMode());
@@ -59,6 +67,55 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+
+  // Reload local state from storage
+  const handleReloadData = useCallback(() => {
+    setTransactions(getTransactions(profileMode));
+    setMembers(getMembers(profileMode));
+    setBudgets(getBudgets(profileMode));
+    setAccounts(getAccounts(profileMode));
+  }, [profileMode]);
+
+  // Initial cloud fetch from Supabase if configured
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    let isMounted = true;
+    const loadFromCloud = async () => {
+      try {
+        const [cloudTxs, cloudMems, cloudBudgets, cloudAccounts] = await Promise.all([
+          fetchTransactionsFromSupabase(profileMode),
+          fetchMembersFromSupabase(profileMode),
+          fetchBudgetsFromSupabase(profileMode),
+          fetchAccountsFromSupabase(profileMode),
+        ]);
+
+        if (!isMounted) return;
+
+        if (cloudTxs && cloudTxs.length > 0) {
+          setTransactions(cloudTxs);
+        }
+        if (cloudMems && cloudMems.length > 0) {
+          setMembers(cloudMems);
+        }
+        if (cloudBudgets && cloudBudgets.length > 0) {
+          setBudgets(cloudBudgets);
+        }
+        if (cloudAccounts && cloudAccounts.length > 0) {
+          setAccounts(cloudAccounts);
+        }
+      } catch (err) {
+        console.warn('Supabase initial fetch info:', err);
+      }
+    };
+
+    loadFromCloud();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profileMode]);
 
   // Switch Profile (Família vs Pequena Empresa)
   const handleToggleProfile = (newMode: ProfileMode) => {
@@ -373,6 +430,7 @@ export default function App() {
         }}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         onOpenMembersModal={() => setIsMembersModalOpen(true)}
         onMarkAsPaid={handleMarkAsPaid}
       />
@@ -511,6 +569,13 @@ export default function App() {
         members={members}
         profileMode={profileMode}
         onSaveMembers={setMembers}
+      />
+
+      <SupabaseSyncModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+        profileMode={profileMode}
+        onDataReloaded={handleReloadData}
       />
     </div>
   );
