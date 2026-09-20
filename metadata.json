@@ -1,0 +1,6 @@
+{
+  "name": "Controle Financeiro Compartilhado",
+  "description": "Sistema de controle financeiro para famílias e pequenas empresas com entradas, saídas, pendências, orçamentos, relatórios PDF/Excel, WhatsApp e sincronização Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
