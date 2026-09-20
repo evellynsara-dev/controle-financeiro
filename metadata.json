@@ -1,6 +1,6 @@
 {
   "name": "Controle Financeiro Compartilhado",
-  "description": "Sistema de controle financeiro para famílias e pequenas empresas com entradas, saídas, pendências, orçamentos, relatórios PDF/Excel, WhatsApp, sincronização Google Sheets e persistência em nuvem Supabase.",
+  "description": "Sistema de controle financeiro familiar e empresarial com entradas, saídas, faturas, orçamentos, relatórios PDF/Excel, WhatsApp e sincronização direta no Google Drive e Google Planilhas via Login Google.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -5,7 +5,6 @@ import {
   Member,
   CategoryBudget,
   PaymentAccount,
-  GoogleSheetsConfig,
   FinancialSummary,
   TransactionType,
 } from './types';
@@ -20,8 +19,6 @@ import {
   saveBudgets,
   getAccounts,
   saveAccounts,
-  getSheetsConfig,
-  saveSheetsConfig,
 } from './services/storage';
 import { calculateDueReminders, sendPushNotification } from './services/notifications';
 import { Header } from './components/Header';
@@ -33,16 +30,17 @@ import { TransactionsTable } from './components/TransactionsTable';
 import { CreditCardInvoiceForecast } from './components/CreditCardInvoiceForecast';
 import { TransactionModal } from './components/TransactionModal';
 import { ExportAndShareModal } from './components/ExportAndShareModal';
-import { GoogleSheetsSyncModal } from './components/GoogleSheetsSyncModal';
+import { GoogleDriveSyncModal } from './components/GoogleDriveSyncModal';
 import { MembersModal } from './components/MembersModal';
-import { SupabaseSyncModal } from './components/SupabaseSyncModal';
+import { User } from 'firebase/auth';
 import {
-  isSupabaseConfigured,
-  fetchTransactionsFromSupabase,
-  fetchMembersFromSupabase,
-  fetchBudgetsFromSupabase,
-  fetchAccountsFromSupabase,
-} from './services/storage';
+  GoogleDriveConfig,
+  getGoogleDriveConfig,
+  saveGoogleDriveConfig,
+  initGoogleAuth,
+  syncFinancialDataToSheets,
+  getAccessToken,
+} from './services/googleDriveService';
 
 export default function App() {
   const [profileMode, setProfileModeState] = useState<ProfileMode>(() => getProfileMode());
@@ -52,12 +50,21 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
 
+  const MONTH_NAMES = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+  const periodName = `${MONTH_NAMES[selectedMonth]} de ${selectedYear}`;
+
   // Core Data
   const [transactions, setTransactions] = useState<Transaction[]>(() => getTransactions(getProfileMode()));
   const [members, setMembers] = useState<Member[]>(() => getMembers(getProfileMode()));
   const [budgets, setBudgets] = useState<CategoryBudget[]>(() => getBudgets(getProfileMode()));
   const [accounts, setAccounts] = useState<PaymentAccount[]>(() => getAccounts(getProfileMode()));
-  const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(() => getSheetsConfig());
+
+  // Google Drive & Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [driveConfig, setDriveConfig] = useState<GoogleDriveConfig>(() => getGoogleDriveConfig());
 
   // Modals state
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
@@ -65,57 +72,21 @@ export default function App() {
   const [defaultTxType, setDefaultTxType] = useState<TransactionType>('saida');
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
+  const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
-  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
-  // Reload local state from storage
-  const handleReloadData = useCallback(() => {
-    setTransactions(getTransactions(profileMode));
-    setMembers(getMembers(profileMode));
-    setBudgets(getBudgets(profileMode));
-    setAccounts(getAccounts(profileMode));
-  }, [profileMode]);
-
-  // Initial cloud fetch from Supabase if configured
+  // Initialize Google Auth state listener
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-
-    let isMounted = true;
-    const loadFromCloud = async () => {
-      try {
-        const [cloudTxs, cloudMems, cloudBudgets, cloudAccounts] = await Promise.all([
-          fetchTransactionsFromSupabase(profileMode),
-          fetchMembersFromSupabase(profileMode),
-          fetchBudgetsFromSupabase(profileMode),
-          fetchAccountsFromSupabase(profileMode),
-        ]);
-
-        if (!isMounted) return;
-
-        if (cloudTxs && cloudTxs.length > 0) {
-          setTransactions(cloudTxs);
-        }
-        if (cloudMems && cloudMems.length > 0) {
-          setMembers(cloudMems);
-        }
-        if (cloudBudgets && cloudBudgets.length > 0) {
-          setBudgets(cloudBudgets);
-        }
-        if (cloudAccounts && cloudAccounts.length > 0) {
-          setAccounts(cloudAccounts);
-        }
-      } catch (err) {
-        console.warn('Supabase initial fetch info:', err);
+    const unsubscribe = initGoogleAuth(
+      (user) => {
+        setCurrentUser(user);
+      },
+      () => {
+        setCurrentUser(null);
       }
-    };
-
-    loadFromCloud();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [profileMode]);
+    );
+    return () => unsubscribe();
+  }, []);
 
   // Switch Profile (Família vs Pequena Empresa)
   const handleToggleProfile = (newMode: ProfileMode) => {
@@ -146,8 +117,8 @@ export default function App() {
   }, [accounts, profileMode]);
 
   useEffect(() => {
-    saveSheetsConfig(sheetsConfig);
-  }, [sheetsConfig]);
+    saveGoogleDriveConfig(driveConfig);
+  }, [driveConfig]);
 
   // Filter transactions for currently selected month/year
   const currentMonthTransactions = useMemo(() => {
@@ -242,83 +213,47 @@ export default function App() {
     }
   }, [dueReminders]);
 
-  // Background Auto-sync with Google Sheets (if configured)
-  const syncWithGoogleSheets = useCallback(
-    async (scriptUrl: string): Promise<{ success: boolean; message: string }> => {
-      if (!scriptUrl) {
-        return { success: false, message: 'URL do script não configurada.' };
-      }
-
-      const payload = {
-        sheetId: sheetsConfig.sheetId,
-        timestamp: new Date().toISOString(),
-        transactions,
-        summary,
-        budgets,
-        members,
-      };
-
-      try {
-        // Attempt POST to Google Apps Script Web App
-        const res = await fetch(scriptUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
-          },
-          body: JSON.stringify(payload),
-        });
-
-        // Try reading JSON if allowed by CORS, or fallback to ok status
-        let resultMessage = 'Planilha sincronizada com sucesso!';
-        try {
-          const json = await res.json();
-          if (json.status === 'success') {
-            resultMessage = json.message || resultMessage;
-          }
-        } catch {
-          // If CORS prevents parsing response, the 200 OK from GAS is accepted
-        }
-
-        const updatedConfig: GoogleSheetsConfig = {
-          ...sheetsConfig,
-          scriptUrl,
-          lastSyncAt: new Date().toISOString(),
-          syncStatus: 'success',
-          syncCount: (sheetsConfig.syncCount || 0) + 1,
-        };
-        setSheetsConfig(updatedConfig);
-        saveSheetsConfig(updatedConfig);
-
-        return { success: true, message: resultMessage };
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : 'Erro de conexão com o Google Apps Script';
-        const updatedConfig: GoogleSheetsConfig = {
-          ...sheetsConfig,
-          scriptUrl,
-          syncStatus: 'error',
-          lastError: errMsg,
-        };
-        setSheetsConfig(updatedConfig);
-        saveSheetsConfig(updatedConfig);
-
-        return {
-          success: false,
-          message: `Erro de conexão: ${errMsg}. Certifique-se de que a implantação está configurada como 'Qualquer pessoa'.`,
-        };
-      }
-    },
-    [sheetsConfig, transactions, summary, budgets, members]
-  );
-
-  // Trigger auto-sync if enabled
+  // Background Auto-sync with Google Drive & Planilhas (if enabled)
   useEffect(() => {
-    if (sheetsConfig.autoSync && sheetsConfig.scriptUrl) {
-      const timer = setTimeout(() => {
-        syncWithGoogleSheets(sheetsConfig.scriptUrl);
-      }, 3000);
+    if (driveConfig.autoSync && driveConfig.spreadsheetId && currentUser) {
+      const token = getAccessToken();
+      if (!token) return;
+
+      const timer = setTimeout(async () => {
+        try {
+          await syncFinancialDataToSheets(
+            token,
+            driveConfig.spreadsheetId!,
+            transactions,
+            summary,
+            budgets,
+            members,
+            periodName
+          );
+          const updated = {
+            ...driveConfig,
+            lastSyncAt: new Date().toLocaleString('pt-BR'),
+            syncStatus: 'success' as const,
+          };
+          setDriveConfig(updated);
+          saveGoogleDriveConfig(updated);
+        } catch (err) {
+          console.warn('Auto-sync Google Drive error:', err);
+        }
+      }, 3500);
+
       return () => clearTimeout(timer);
     }
-  }, [transactions, sheetsConfig.autoSync, sheetsConfig.scriptUrl, syncWithGoogleSheets]);
+  }, [
+    transactions,
+    budgets,
+    members,
+    driveConfig.autoSync,
+    driveConfig.spreadsheetId,
+    currentUser,
+    summary,
+    periodName,
+  ]);
 
   // Actions
   const handleMarkAsPaid = (id: string) => {
@@ -402,11 +337,6 @@ export default function App() {
     setBudgets((prev) => [...prev, newBudget]);
   };
 
-  const MONTH_NAMES = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-  ];
-  const periodName = `${MONTH_NAMES[selectedMonth]} de ${selectedYear}`;
   const profileTitle = profileMode === 'familia' ? 'Controle Financeiro Familiar' : 'Finanças da Empresa';
 
   return (
@@ -422,15 +352,15 @@ export default function App() {
           setSelectedYear(y);
         }}
         dueReminders={dueReminders}
-        sheetsConfig={sheetsConfig}
+        currentUser={currentUser}
+        driveConfig={driveConfig}
         onOpenNewTransaction={() => {
           setEditingTransaction(null);
           setDefaultTxType('saida');
           setIsTxModalOpen(true);
         }}
         onOpenExportModal={() => setIsExportModalOpen(true)}
-        onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
-        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+        onOpenDriveModal={() => setIsDriveModalOpen(true)}
         onOpenMembersModal={() => setIsMembersModalOpen(true)}
         onMarkAsPaid={handleMarkAsPaid}
       />
@@ -552,17 +482,16 @@ export default function App() {
         profileTitle={profileTitle}
       />
 
-      <GoogleSheetsSyncModal
-        isOpen={isSheetsModalOpen}
-        onClose={() => setIsSheetsModalOpen(false)}
-        config={sheetsConfig}
-        onSaveConfig={setSheetsConfig}
+      <GoogleDriveSyncModal
+        isOpen={isDriveModalOpen}
+        onClose={() => setIsDriveModalOpen(false)}
+        currentUser={currentUser}
+        onUserChange={setCurrentUser}
         transactions={transactions}
         summary={summary}
         budgets={budgets}
         members={members}
         periodName={periodName}
-        onSyncWithSheets={syncWithGoogleSheets}
       />
 
       <MembersModal
@@ -571,13 +500,6 @@ export default function App() {
         members={members}
         profileMode={profileMode}
         onSaveMembers={setMembers}
-      />
-
-      <SupabaseSyncModal
-        isOpen={isSupabaseModalOpen}
-        onClose={() => setIsSupabaseModalOpen(false)}
-        profileMode={profileMode}
-        onDataReloaded={handleReloadData}
       />
     </div>
   );

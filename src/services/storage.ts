@@ -1072,18 +1072,11 @@ CREATE POLICY "Public access accounts" ON accounts FOR ALL USING (true) WITH CHE
 `;
 };
 
-// --- SYNCHRONOUS ACCESSORS COM AUTO-PERSISTÊNCIA ASSÍNCRONA ---
+// --- SYNCHRONOUS LOCAL ACCESSORS ---
 
 export const saveTransactions = (mode: ProfileMode, transactions: Transaction[]): void => {
   const key = `${STORAGE_KEYS.TRANSACTIONS}_${mode}`;
   localStorage.setItem(key, JSON.stringify(transactions));
-
-  // Persistência em segundo plano para o Supabase se configurado
-  if (isSupabaseConfigured()) {
-    saveTransactionsToSupabase(mode, transactions).catch((err) => {
-      console.warn('Erro em background ao sincronizar transações com Supabase:', err);
-    });
-  }
 };
 
 export const getMembers = (mode: ProfileMode): Member[] => {
@@ -1104,13 +1097,6 @@ export const getMembers = (mode: ProfileMode): Member[] => {
 export const saveMembers = (mode: ProfileMode, members: Member[]): void => {
   const key = `${STORAGE_KEYS.MEMBERS}_${mode}`;
   localStorage.setItem(key, JSON.stringify(members));
-
-  // Persistência em segundo plano para o Supabase se configurado
-  if (isSupabaseConfigured()) {
-    saveMembersToSupabase(mode, members).catch((err) => {
-      console.warn('Erro em background ao sincronizar membros com Supabase:', err);
-    });
-  }
 };
 
 export const getBudgets = (mode: ProfileMode): CategoryBudget[] => {
@@ -1131,13 +1117,6 @@ export const getBudgets = (mode: ProfileMode): CategoryBudget[] => {
 export const saveBudgets = (mode: ProfileMode, budgets: CategoryBudget[]): void => {
   const key = `${STORAGE_KEYS.BUDGETS}_${mode}`;
   localStorage.setItem(key, JSON.stringify(budgets));
-
-  // Persistência em segundo plano para o Supabase se configurado
-  if (isSupabaseConfigured()) {
-    saveBudgetsToSupabase(mode, budgets).catch((err) => {
-      console.warn('Erro em background ao sincronizar orçamentos com Supabase:', err);
-    });
-  }
 };
 
 export const getAccounts = (mode: ProfileMode): PaymentAccount[] => {
@@ -1158,13 +1137,6 @@ export const getAccounts = (mode: ProfileMode): PaymentAccount[] => {
 export const saveAccounts = (mode: ProfileMode, accounts: PaymentAccount[]): void => {
   const key = `${STORAGE_KEYS.ACCOUNTS}_${mode}`;
   localStorage.setItem(key, JSON.stringify(accounts));
-
-  // Persistência em segundo plano para o Supabase se configurado
-  if (isSupabaseConfigured()) {
-    saveAccountsToSupabase(mode, accounts).catch((err) => {
-      console.warn('Erro em background ao sincronizar contas com Supabase:', err);
-    });
-  }
 };
 
 export const getSheetsConfig = (): GoogleSheetsConfig => {
