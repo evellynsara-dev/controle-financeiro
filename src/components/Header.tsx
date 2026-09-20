@@ -103,9 +103,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-none">
                     Controle Financeiro
                   </h1>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Ao Vivo
-                  </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {profileMode === 'familia' ? 'Gestão Compartilhada Familiar' : 'Finanças para Pequenas Empresas'}
