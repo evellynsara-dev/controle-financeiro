@@ -17,8 +17,6 @@ export const auth = getAuth(app);
 export const WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/userinfo.email',
 ];
 
 const provider = new GoogleAuthProvider();
@@ -225,42 +223,48 @@ export const initGoogleAuth = (
   };
 };
 
-// Sign in with Google (GIS primary for Workspace APIs, with seamless fallback)
+// Sign in with Google (Firebase Auth as primary, GSI as fallback)
 export const signInWithGoogle = async (): Promise<{ user: GoogleDriveUser; accessToken: string }> => {
   isSigningIn = true;
   try {
-    const clientId = firebaseConfig.oAuthClientId;
     let token: string | null = null;
     let user: GoogleDriveUser | null = null;
 
-    // 1. Preferred: Google Identity Services (GSI) Token Client
-    // This avoids Firebase auth/unauthorized-domain errors on Cloud Run / preview domains
-    if (clientId) {
-      try {
-        token = await requestTokenViaGSI(clientId);
-        user = await fetchGoogleUserInfo(token);
-      } catch (gsiErr: any) {
-        console.warn('Google Identity Services attempt:', gsiErr);
-        if (gsiErr.message?.includes('cancelada')) {
-          throw gsiErr;
+    // 1. Primary: Firebase Auth Popup (standard flow configured via set_up_oauth)
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        token = credential.accessToken;
+        user = {
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName,
+          photoURL: result.user.photoURL,
+        };
+      }
+    } catch (fbErr: any) {
+      console.warn('Firebase signInWithPopup avisou:', fbErr);
+      if (fbErr.code === 'auth/popup-closed-by-user') {
+        throw new Error('Janela de login foi fechada antes de concluir.');
+      }
+      // If Firebase failed (e.g. domain authorization propagation delay), attempt GSI fallback
+      const clientId = firebaseConfig.oAuthClientId;
+      if (clientId) {
+        try {
+          token = await requestTokenViaGSI(clientId);
+          user = await fetchGoogleUserInfo(token);
+        } catch (gsiErr: any) {
+          console.error('GSI fallback falhou:', gsiErr);
+          throw fbErr; // throw original Firebase error
         }
+      } else {
+        throw fbErr;
       }
     }
 
-    // 2. Fallback to Firebase Popup if GSI is not available
     if (!token || !user) {
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (!credential?.accessToken) {
-        throw new Error('Não foi possível obter o token de acesso da sua conta Google.');
-      }
-      token = credential.accessToken;
-      user = {
-        uid: result.user.uid,
-        email: result.user.email,
-        displayName: result.user.displayName,
-        photoURL: result.user.photoURL,
-      };
+      throw new Error('Não foi possível obter o token de acesso da sua conta Google.');
     }
 
     cachedAccessToken = token;
@@ -274,7 +278,7 @@ export const signInWithGoogle = async (): Promise<{ user: GoogleDriveUser; acces
     console.error('Erro no login do Google:', error);
     if (error.code === 'auth/unauthorized-domain') {
       throw new Error(
-        'Domínio não cadastrado no Firebase Auth. Tentando conectar diretamente via Google Identity Services...'
+        'A autorização do domínio Google Cloud está sendo atualizada. Por favor, aguarde alguns instantes e clique em "Entrar com o Google" novamente.'
       );
     }
     if (error.code === 'auth/popup-closed-by-user') {
