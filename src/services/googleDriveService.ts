@@ -283,14 +283,22 @@ export const signInWithGoogle = async (): Promise<{ user: GoogleDriveUser; acces
     return { user, accessToken: token };
   } catch (error: any) {
     console.error('Erro no login do Google:', error);
-    if (error.code === 'auth/unauthorized-domain') {
-      throw new Error(
-        'A autorização do domínio Google Cloud está sendo atualizada. Por favor, aguarde alguns instantes e clique em "Entrar com o Google" novamente.'
-      );
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const isExternalDomain = origin && !origin.includes('localhost') && !origin.includes('run.app');
+
+    if (error.code === 'auth/unauthorized-domain' || error.message?.includes('origin_mismatch')) {
+      const originMsg = isExternalDomain
+        ? `O domínio "${origin}" precisa ser adicionado às Origens JavaScript autorizadas do Google Cloud Console.`
+        : 'Aguarde alguns instantes enquanto a autorização do Google Cloud propaga e tente novamente.';
+      const customErr = new Error(originMsg);
+      (customErr as any).code = 'origin_mismatch';
+      (customErr as any).origin = origin;
+      throw customErr;
     }
     if (error.code === 'auth/popup-closed-by-user') {
-      const cancelErr = new Error('A janela de login do Google foi fechada antes da confirmação. Clique novamente em "Entrar com o Google" quando desejar.');
+      const cancelErr = new Error('A janela de login do Google foi fechada antes de concluir.');
       (cancelErr as any).code = 'auth/popup-closed-by-user';
+      (cancelErr as any).origin = origin;
       throw cancelErr;
     }
     if (error.code === 'auth/popup-blocked') {

@@ -1331,3 +1331,262 @@ function getOrCreateSheet(spreadsheet, sheetName, headers) {
 }
 `;
 };
+
+// --- BACKUP & RESTAURAÇÃO COMPLETA DE DADOS ---
+
+export interface FullBackupPayload {
+  version: number;
+  appName: string;
+  exportedAt: string;
+  activeProfileMode: ProfileMode;
+  data: {
+    familia: {
+      transactions: Transaction[];
+      members: Member[];
+      budgets: CategoryBudget[];
+      accounts: PaymentAccount[];
+    };
+    empresa: {
+      transactions: Transaction[];
+      members: Member[];
+      budgets: CategoryBudget[];
+      accounts: PaymentAccount[];
+    };
+  };
+  sheetsConfig?: GoogleSheetsConfig;
+}
+
+export interface BackupValidationResult {
+  valid: boolean;
+  error?: string;
+  payload?: FullBackupPayload;
+  stats?: {
+    exportedAt: string;
+    totalFamiliaTransactions: number;
+    totalEmpresaTransactions: number;
+    totalMembers: number;
+    totalBudgets: number;
+    totalAccounts: number;
+  };
+}
+
+/**
+ * Gera o objeto completo de backup de ambos os perfis (Família e Empresa)
+ */
+export const createFullBackupData = (activeMode?: ProfileMode): FullBackupPayload => {
+  const currentMode = activeMode || getProfileMode();
+  return {
+    version: 1,
+    appName: 'Controle Financeiro Compartilhado',
+    exportedAt: new Date().toISOString(),
+    activeProfileMode: currentMode,
+    data: {
+      familia: {
+        transactions: getTransactions('familia'),
+        members: getMembers('familia'),
+        budgets: getBudgets('familia'),
+        accounts: getAccounts('familia'),
+      },
+      empresa: {
+        transactions: getTransactions('empresa'),
+        members: getMembers('empresa'),
+        budgets: getBudgets('empresa'),
+        accounts: getAccounts('empresa'),
+      },
+    },
+    sheetsConfig: getSheetsConfig(),
+  };
+};
+
+/**
+ * Faz o download do arquivo de backup (.json) no navegador do usuário
+ */
+export const downloadFullBackupFile = (activeMode?: ProfileMode): { filename: string; sizeBytes: number } => {
+  const backupData = createFullBackupData(activeMode);
+  const jsonStr = JSON.stringify(backupData, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const filename = `backup-financeiro-${dateStr}-${timeStr}.json`;
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  return { filename, sizeBytes: blob.size };
+};
+
+/**
+ * Valida o conteúdo de um arquivo de backup
+ */
+export const validateBackupJSON = (content: string): BackupValidationResult => {
+  try {
+    const parsed = JSON.parse(content);
+
+    // Formato 1: Backup Completo Oficial (com 'data' e 'familia'/'empresa')
+    if (parsed && typeof parsed === 'object' && parsed.data && (parsed.data.familia || parsed.data.empresa)) {
+      const famTx = parsed.data.familia?.transactions || [];
+      const empTx = parsed.data.empresa?.transactions || [];
+      const famMem = parsed.data.familia?.members || [];
+      const empMem = parsed.data.empresa?.members || [];
+      const famBdg = parsed.data.familia?.budgets || [];
+      const empBdg = parsed.data.empresa?.budgets || [];
+      const famAcc = parsed.data.familia?.accounts || [];
+      const empAcc = parsed.data.empresa?.accounts || [];
+
+      return {
+        valid: true,
+        payload: parsed as FullBackupPayload,
+        stats: {
+          exportedAt: parsed.exportedAt || new Date().toISOString(),
+          totalFamiliaTransactions: famTx.length,
+          totalEmpresaTransactions: empTx.length,
+          totalMembers: famMem.length + empMem.length,
+          totalBudgets: famBdg.length + empBdg.length,
+          totalAccounts: famAcc.length + empAcc.length,
+        },
+      };
+    }
+
+    // Formato 2: Lista direta de transações
+    if (Array.isArray(parsed)) {
+      const isTxList = parsed.every((item) => item && typeof item === 'object' && ('amount' in item || 'description' in item));
+      if (isTxList) {
+        const synthetic: FullBackupPayload = {
+          version: 1,
+          appName: 'Controle Financeiro Importado',
+          exportedAt: new Date().toISOString(),
+          activeProfileMode: 'familia',
+          data: {
+            familia: {
+              transactions: parsed,
+              members: DEFAULT_MEMBERS.familia,
+              budgets: DEFAULT_BUDGETS.familia,
+              accounts: DEFAULT_ACCOUNTS.familia,
+            },
+            empresa: {
+              transactions: getInitialTransactions('empresa'),
+              members: DEFAULT_MEMBERS.empresa,
+              budgets: DEFAULT_BUDGETS.empresa,
+              accounts: DEFAULT_ACCOUNTS.empresa,
+            },
+          },
+        };
+        return {
+          valid: true,
+          payload: synthetic,
+          stats: {
+            exportedAt: new Date().toISOString(),
+            totalFamiliaTransactions: parsed.length,
+            totalEmpresaTransactions: 0,
+            totalMembers: DEFAULT_MEMBERS.familia.length,
+            totalBudgets: DEFAULT_BUDGETS.familia.length,
+            totalAccounts: DEFAULT_ACCOUNTS.familia.length,
+          },
+        };
+      }
+    }
+
+    // Formato 3: Objeto com transações e membros na raiz
+    if (parsed && typeof parsed === 'object' && (parsed.transactions || parsed.members || parsed.budgets)) {
+      const txs = parsed.transactions || [];
+      const synthetic: FullBackupPayload = {
+        version: 1,
+        appName: 'Controle Financeiro Importado',
+        exportedAt: parsed.exportedAt || new Date().toISOString(),
+        activeProfileMode: parsed.activeProfileMode || 'familia',
+        data: {
+          familia: {
+            transactions: txs,
+            members: parsed.members || DEFAULT_MEMBERS.familia,
+            budgets: parsed.budgets || DEFAULT_BUDGETS.familia,
+            accounts: parsed.accounts || DEFAULT_ACCOUNTS.familia,
+          },
+          empresa: {
+            transactions: getInitialTransactions('empresa'),
+            members: DEFAULT_MEMBERS.empresa,
+            budgets: DEFAULT_BUDGETS.empresa,
+            accounts: DEFAULT_ACCOUNTS.empresa,
+          },
+        },
+      };
+      return {
+        valid: true,
+        payload: synthetic,
+        stats: {
+          exportedAt: parsed.exportedAt || new Date().toISOString(),
+          totalFamiliaTransactions: txs.length,
+          totalEmpresaTransactions: 0,
+          totalMembers: (parsed.members || DEFAULT_MEMBERS.familia).length,
+          totalBudgets: (parsed.budgets || DEFAULT_BUDGETS.familia).length,
+          totalAccounts: (parsed.accounts || DEFAULT_ACCOUNTS.familia).length,
+        },
+      };
+    }
+
+    return {
+      valid: false,
+      error: 'O arquivo selecionado não possui um formato de backup válido para o Controle Financeiro.',
+    };
+  } catch (err: any) {
+    return {
+      valid: false,
+      error: 'Erro ao interpretar o arquivo: ' + (err.message || 'formato JSON corrompido'),
+    };
+  }
+};
+
+/**
+ * Restaura o backup completo no armazenamento local
+ */
+export const restoreFullBackup = (
+  payload: FullBackupPayload,
+  activeMode: ProfileMode
+): {
+  success: boolean;
+  restoredMode: ProfileMode;
+  transactions: Transaction[];
+  members: Member[];
+  budgets: CategoryBudget[];
+  accounts: PaymentAccount[];
+} => {
+  // Salva dados de Família se presentes
+  if (payload.data?.familia) {
+    saveTransactions('familia', payload.data.familia.transactions || []);
+    saveMembers('familia', payload.data.familia.members || DEFAULT_MEMBERS.familia);
+    saveBudgets('familia', payload.data.familia.budgets || DEFAULT_BUDGETS.familia);
+    saveAccounts('familia', payload.data.familia.accounts || DEFAULT_ACCOUNTS.familia);
+  }
+
+  // Salva dados de Empresa se presentes
+  if (payload.data?.empresa) {
+    saveTransactions('empresa', payload.data.empresa.transactions || []);
+    saveMembers('empresa', payload.data.empresa.members || DEFAULT_MEMBERS.empresa);
+    saveBudgets('empresa', payload.data.empresa.budgets || DEFAULT_BUDGETS.empresa);
+    saveAccounts('empresa', payload.data.empresa.accounts || DEFAULT_ACCOUNTS.empresa);
+  }
+
+  // Restaura o modo ou mantém o ativo
+  const targetMode = payload.activeProfileMode || activeMode;
+  setProfileMode(targetMode);
+
+  if (payload.sheetsConfig) {
+    saveSheetsConfig(payload.sheetsConfig);
+  }
+
+  return {
+    success: true,
+    restoredMode: targetMode,
+    transactions: getTransactions(targetMode),
+    members: getMembers(targetMode),
+    budgets: getBudgets(targetMode),
+    accounts: getAccounts(targetMode),
+  };
+};

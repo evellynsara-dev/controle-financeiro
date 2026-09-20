@@ -31,6 +31,7 @@ import { CreditCardInvoiceForecast } from './components/CreditCardInvoiceForecas
 import { TransactionModal } from './components/TransactionModal';
 import { ExportAndShareModal } from './components/ExportAndShareModal';
 import { GoogleDriveSyncModal } from './components/GoogleDriveSyncModal';
+import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { MembersModal } from './components/MembersModal';
 import {
   GoogleDriveUser,
@@ -73,6 +74,7 @@ export default function App() {
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
 
   // Initialize Google Auth state listener
@@ -87,6 +89,21 @@ export default function App() {
     );
     return () => unsubscribe();
   }, []);
+
+  // Handle full restore of backup data
+  const handleRestoreSuccess = (restored: {
+    transactions: Transaction[];
+    members: Member[];
+    budgets: CategoryBudget[];
+    accounts: PaymentAccount[];
+    profileMode: ProfileMode;
+  }) => {
+    setProfileModeState(restored.profileMode);
+    setTransactions(restored.transactions);
+    setMembers(restored.members);
+    setBudgets(restored.budgets);
+    setAccounts(restored.accounts);
+  };
 
   // Switch Profile (Família vs Pequena Empresa)
   const handleToggleProfile = (newMode: ProfileMode) => {
@@ -360,6 +377,7 @@ export default function App() {
           setIsTxModalOpen(true);
         }}
         onOpenExportModal={() => setIsExportModalOpen(true)}
+        onOpenBackupModal={() => setIsBackupModalOpen(true)}
         onOpenDriveModal={() => setIsDriveModalOpen(true)}
         onOpenMembersModal={() => setIsMembersModalOpen(true)}
         onMarkAsPaid={handleMarkAsPaid}
@@ -500,6 +518,18 @@ export default function App() {
         members={members}
         profileMode={profileMode}
         onSaveMembers={setMembers}
+      />
+
+      <BackupRestoreModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        profileMode={profileMode}
+        transactions={transactions}
+        summary={summary}
+        budgets={budgets}
+        members={members}
+        periodName={periodName}
+        onRestoreSuccess={handleRestoreSuccess}
       />
     </div>
   );

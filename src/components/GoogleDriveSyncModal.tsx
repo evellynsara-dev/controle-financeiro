@@ -14,6 +14,10 @@ import {
   Calendar,
   Layers,
   ArrowRight,
+  Copy,
+  Check,
+  HelpCircle,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   Transaction,
@@ -34,7 +38,7 @@ import {
   syncFinancialDataToSheets,
   DriveSpreadsheetItem,
 } from '../services/googleDriveService';
-import { exportToGoogleSheetsBackup } from '../services/exportService';
+import { exportToGoogleSheetsBackup, exportToExcel } from '../services/exportService';
 
 interface GoogleDriveSyncModalProps {
   isOpen: boolean;
@@ -73,6 +77,12 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
     message: string;
   } | null>(null);
 
+  // External Domain & Hosting Helper State
+  const [showDomainGuide, setShowDomainGuide] = useState(false);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const isExternalHosting = currentOrigin && !currentOrigin.includes('localhost') && !currentOrigin.includes('run.app');
+
   // Destructive/Mutation Confirmation dialog state (Mandatory for Workspace APIs)
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
@@ -86,6 +96,14 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const handleCopyOrigin = () => {
+    if (currentOrigin) {
+      navigator.clipboard.writeText(currentOrigin);
+      setCopiedOrigin(true);
+      setTimeout(() => setCopiedOrigin(false), 2500);
+    }
+  };
 
   // Handle Google Login
   const handleLogin = async () => {
@@ -112,16 +130,33 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
         }
       }
     } catch (err: any) {
+      const isOriginError =
+        err?.code === 'origin_mismatch' ||
+        err?.message?.includes('origin_mismatch') ||
+        err?.message?.includes('Google Cloud Console') ||
+        err?.code === 'auth/unauthorized-domain';
+
       const isUserCancellation =
         err?.code === 'auth/popup-closed-by-user' ||
         err?.message?.includes('fechada') ||
         err?.message?.includes('cancelada');
 
-      if (isUserCancellation) {
+      if (isOriginError) {
+        setShowDomainGuide(true);
+        setFeedback({
+          type: 'error',
+          message:
+            `O Google bloqueou o login porque o domínio "${currentOrigin}" ainda não foi adicionado nas "Origens JavaScript autorizadas" do Google Cloud. Veja as instruções abaixo para autorizar.`,
+        });
+      } else if (isUserCancellation) {
+        // If cancellation happened on external domain, user probably closed the error popup
+        if (isExternalHosting) {
+          setShowDomainGuide(true);
+        }
         setFeedback({
           type: 'info',
           message:
-            'A janela de login do Google foi fechada. Clique em "Entrar com o Google" quando quiser conectar.',
+            'A janela de login do Google foi fechada. Se a janela continha o erro "400: origin_mismatch", siga as instruções do painel de autorização abaixo.',
         });
       } else {
         setFeedback({
@@ -451,6 +486,90 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
               )}
             </div>
           </div>
+
+          {/* Hosting Domain Helper & Origin Authorization Guide */}
+          {(showDomainGuide || (isExternalHosting && !currentUser)) && (
+            <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/70 space-y-3 animate-in fade-in">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs sm:text-sm">
+                      Autorização necessária para: {currentOrigin || 'seu domínio'}
+                    </h4>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Por segurança, o Google exige que este endereço esteja listado no seu Google Cloud Console para liberar o login.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDomainGuide(!showDomainGuide)}
+                  className="text-amber-800 hover:text-amber-950 text-xs font-semibold shrink-0"
+                >
+                  {showDomainGuide ? 'Ocultar' : 'Como autorizar?'}
+                </button>
+              </div>
+
+              {showDomainGuide && (
+                <div className="space-y-3 pt-2 border-t border-amber-200/60 text-xs text-slate-700">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-medium text-slate-600">Seu endereço web:</span>
+                    <code className="px-2 py-1 bg-white border border-amber-300 rounded font-mono text-[11px] text-slate-800 select-all">
+                      {currentOrigin}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={handleCopyOrigin}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded font-semibold text-[11px] transition-colors"
+                    >
+                      {copiedOrigin ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedOrigin ? 'Copiado!' : 'Copiar URL'}</span>
+                    </button>
+                  </div>
+
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-700 leading-relaxed bg-white/70 p-3 rounded-lg border border-amber-200/60">
+                    <li>
+                      Abra o{' '}
+                      <a
+                        href="https://console.cloud.google.com/apis/credentials?project=gen-lang-client-0070516740"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:underline font-bold inline-flex items-center gap-0.5"
+                      >
+                        Google Cloud Console
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </li>
+                    <li>
+                      Em <strong>IDs do cliente OAuth 2.0</strong>, clique no seu cliente.
+                    </li>
+                    <li>
+                      Na seção <strong>Origens JavaScript autorizadas</strong>, clique em <strong>+ Adicionar URI</strong> e cole a URL copiada: <code className="text-amber-900 font-mono">{currentOrigin}</code>
+                    </li>
+                    <li>
+                      Clique em <strong>Salvar</strong> na parte inferior da página.
+                    </li>
+                  </ol>
+
+                  {/* Immediate Alternative: Download XLSX */}
+                  <div className="pt-2 border-t border-amber-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-600">
+                      💡 <strong>Não quer configurar agora?</strong> Você pode baixar a planilha com as 5 abas formatadas imediatamente:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => exportToExcel(transactions, summary, budgets, members, periodName)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-2xs transition-colors shrink-0"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Baixar Planilha (.xlsx)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Section 2: Active Google Spreadsheet in Drive */}
           {currentUser && (
