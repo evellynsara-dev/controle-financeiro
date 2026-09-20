@@ -18,6 +18,7 @@ interface TransactionsTableProps {
   transactions: Transaction[];
   members: Member[];
   budgets: CategoryBudget[];
+  isReadOnly?: boolean;
   onEditTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
   onMarkAsPaid: (id: string) => void;
@@ -28,6 +29,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   transactions,
   members,
   budgets,
+  isReadOnly = false,
   onEditTransaction,
   onDeleteTransaction,
   onMarkAsPaid,
@@ -328,49 +330,55 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
                     {/* Actions */}
                     <td className="p-3 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {t.type === 'falta_pagar' && (
-                          <button
-                            type="button"
-                            onClick={() => onMarkAsPaid(t.id)}
-                            className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-semibold transition-colors"
-                            title="Marcar como Pago"
-                          >
-                            Pagar
-                          </button>
-                        )}
-                        {t.type === 'falta_receber' && (
-                          <button
-                            type="button"
-                            onClick={() => onMarkAsReceived(t.id)}
-                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-semibold transition-colors"
-                            title="Marcar como Recebido"
-                          >
-                            Receber
-                          </button>
-                        )}
+                      {isReadOnly ? (
+                        <span className="text-[10px] text-slate-400 font-medium px-2 py-0.5 bg-slate-100 rounded-md">
+                          Somente Leitura
+                        </span>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1.5">
+                          {t.type === 'falta_pagar' && (
+                            <button
+                              type="button"
+                              onClick={() => onMarkAsPaid(t.id)}
+                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-semibold transition-colors"
+                              title="Marcar como Pago"
+                            >
+                              Pagar
+                            </button>
+                          )}
+                          {t.type === 'falta_receber' && (
+                            <button
+                              type="button"
+                              onClick={() => onMarkAsReceived(t.id)}
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-semibold transition-colors"
+                              title="Marcar como Recebido"
+                            >
+                              Receber
+                            </button>
+                          )}
 
-                        <button
-                          type="button"
-                          onClick={() => onEditTransaction(t)}
-                          className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors"
-                          title="Editar Lançamento"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`Deseja excluir "${t.description}"?`)) {
-                              onDeleteTransaction(t.id);
-                            }
-                          }}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-100 transition-colors"
-                          title="Excluir Lançamento"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() => onEditTransaction(t)}
+                            className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors"
+                            title="Editar Lançamento"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Deseja excluir "${t.description}"?`)) {
+                                onDeleteTransaction(t.id);
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-100 transition-colors"
+                            title="Excluir Lançamento"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

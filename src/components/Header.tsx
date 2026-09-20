@@ -13,11 +13,13 @@ import {
   Volume2,
   FileSpreadsheet,
   Database,
+  ShieldCheck,
+  Eye,
 } from 'lucide-react';
-import { ProfileMode, DueReminder } from '../types';
+import { ProfileMode, DueReminder, AuthUser } from '../types';
 import { formatBRL, formatDateBR } from '../services/exportService';
 import { playNotificationSound, requestPushPermission } from '../services/notifications';
-import { GoogleDriveConfig, GoogleDriveUser } from '../services/googleDriveService';
+import { UserSessionSwitcher } from './UserSessionSwitcher';
 
 interface HeaderProps {
   profileMode: ProfileMode;
@@ -26,12 +28,13 @@ interface HeaderProps {
   selectedYear: number;
   onChangeMonth: (month: number, year: number) => void;
   dueReminders: DueReminder[];
-  currentUser?: GoogleDriveUser | null;
-  driveConfig?: GoogleDriveConfig;
+  currentUser: AuthUser;
+  onUserChange: (user: AuthUser) => void;
+  onOpenSuperadminModal: () => void;
+  onOpenAdminLicenseModal: () => void;
   onOpenNewTransaction: () => void;
   onOpenExportModal: () => void;
   onOpenBackupModal: () => void;
-  onOpenDriveModal?: () => void;
   onOpenMembersModal: () => void;
   onMarkAsPaid: (transactionId: string) => void;
 }
@@ -48,6 +51,10 @@ export const Header: React.FC<HeaderProps> = ({
   selectedYear,
   onChangeMonth,
   dueReminders,
+  currentUser,
+  onUserChange,
+  onOpenSuperadminModal,
+  onOpenAdminLicenseModal,
   onOpenNewTransaction,
   onOpenExportModal,
   onOpenBackupModal,
@@ -340,16 +347,65 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Relatórios / WhatsApp</span>
             </button>
 
-            {/* Add Transaction Button */}
-            <button
-              id="btn-new-transaction"
-              type="button"
-              onClick={onOpenNewTransaction}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Lançamento</span>
-            </button>
+            {/* Superadmin Exclusive Button */}
+            {currentUser.role === 'superadmin' && (
+              <button
+                id="btn-open-superadmin-header"
+                type="button"
+                onClick={onOpenSuperadminModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border bg-amber-500 text-slate-950 hover:bg-amber-400 transition-all shadow-xs"
+                title="Abrir Painel de Revenda de Licenças (Superadmin)"
+              >
+                <ShieldCheck className="w-4 h-4 text-slate-950" />
+                <span className="hidden md:inline">Painel</span> Revenda
+              </button>
+            )}
+
+            {/* Admin Buyer Exclusive Button */}
+            {currentUser.role === 'admin' && (
+              <button
+                id="btn-open-admin-license-header"
+                type="button"
+                onClick={onOpenAdminLicenseModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100 transition-all shadow-2xs"
+                title="Gerenciar Licença e Membros"
+              >
+                <Building2 className="w-4 h-4 text-indigo-600" />
+                <span className="hidden md:inline">Minha</span> Licença
+              </button>
+            )}
+
+            {/* Add Transaction Button (Restricted for Read-only members) */}
+            {currentUser.role === 'membro' && currentUser.permission === 'leitura' ? (
+              <button
+                id="btn-new-transaction-disabled"
+                type="button"
+                disabled
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-200 text-slate-500 cursor-not-allowed shadow-none"
+                title="Seu perfil de membro é 'Somente Leitura'. Não é permitido incluir novos lançamentos."
+              >
+                <Eye className="w-3.5 h-3.5 text-slate-400" />
+                <span>Modo Leitura</span>
+              </button>
+            ) : (
+              <button
+                id="btn-new-transaction"
+                type="button"
+                onClick={onOpenNewTransaction}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Lançamento</span>
+              </button>
+            )}
+
+            {/* User Session & Role Switcher */}
+            <UserSessionSwitcher
+              currentUser={currentUser}
+              onUserChange={onUserChange}
+              onOpenSuperadminModal={onOpenSuperadminModal}
+              onOpenAdminLicenseModal={onOpenAdminLicenseModal}
+            />
 
           </div>
         </div>
