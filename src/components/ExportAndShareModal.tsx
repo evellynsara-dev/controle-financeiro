@@ -14,6 +14,7 @@ import { Transaction, FinancialSummary, CategoryBudget, Member } from '../types'
 import {
   exportToPDF,
   exportToExcel,
+  exportToGoogleSheetsBackup,
   generateWhatsAppReportText,
   sendWhatsAppReport,
 } from '../services/exportService';
@@ -65,6 +66,10 @@ export const ExportAndShareModal: React.FC<ExportAndShareModalProps> = ({
     exportToExcel(transactions, summary, budgets, members, periodName);
   };
 
+  const handleExportGoogleSheets = () => {
+    exportToGoogleSheetsBackup(transactions, summary, budgets, members, periodName);
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -98,13 +103,53 @@ export const ExportAndShareModal: React.FC<ExportAndShareModalProps> = ({
             <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-3">
               1. Exportar Documentos Oficiais
             </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Google Sheets Backup Card */}
+              <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/50 hover:border-emerald-400 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-emerald-700 mb-2">
+                    <FileSpreadsheet className="w-5 h-5" />
+                    <span className="font-bold text-slate-900 text-sm">Backup Google Planilhas</span>
+                  </div>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    Arquivo pronto para importar no <strong>Google Sheets</strong> (drive / sheets.new) com 5 abas organizadas: Resumo, Transações, Contas a Pagar, Orçamentos e Membros.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleExportGoogleSheets}
+                  className="mt-4 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-colors shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" /> Baixar Backup Planilha
+                </button>
+              </div>
+
+              {/* Excel Card */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-slate-300 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-emerald-600 mb-2">
+                    <FileSpreadsheet className="w-5 h-5" />
+                    <span className="font-bold text-slate-900 text-sm">Planilha em Excel</span>
+                  </div>
+                  <p className="text-slate-500 text-[11px] leading-relaxed">
+                    Arquivo XLSX formatado com fórmulas e abas de Resumo Executivo, Transações, Vencimentos e Limites de Orçamento.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="mt-4 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> Baixar Excel (.xlsx)
+                </button>
+              </div>
+
               {/* PDF Card */}
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-slate-300 transition-all flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-2 text-rose-600 mb-2">
                     <FileText className="w-5 h-5" />
-                    <span className="font-bold text-slate-900 text-sm">Relatório Executivo em PDF</span>
+                    <span className="font-bold text-slate-900 text-sm">Relatório em PDF</span>
                   </div>
                   <p className="text-slate-500 text-[11px] leading-relaxed">
                     Documento diagramado com resumo do saldo consolidado, demonstrativo dos 4 quadros e status dos orçamentos por categoria.
@@ -116,26 +161,6 @@ export const ExportAndShareModal: React.FC<ExportAndShareModalProps> = ({
                   className="mt-4 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" /> Baixar PDF (.pdf)
-                </button>
-              </div>
-
-              {/* Excel Card */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:border-slate-300 transition-all flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center gap-2 text-emerald-600 mb-2">
-                    <FileSpreadsheet className="w-5 h-5" />
-                    <span className="font-bold text-slate-900 text-sm">Planilha Completa em Excel</span>
-                  </div>
-                  <p className="text-slate-500 text-[11px] leading-relaxed">
-                    Arquivo XLSX com múltiplas abas: Resumo Executivo, Todas as Transações, Falta Pagar com alertas de multas e Orçamentos.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleExportExcel}
-                  className="mt-4 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" /> Baixar Excel (.xlsx)
                 </button>
               </div>
             </div>

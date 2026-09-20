@@ -167,7 +167,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
 
-            {/* Google Sheets Sync Button */}
+            {/* Google Sheets Sync & Backup Button */}
             <button
               id="btn-sheets-sync"
               type="button"
@@ -179,10 +179,10 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
               }`}
-              title="Sincronização com Planilha Google Sheets e Apps Script"
+              title="Backup e Sincronização com Google Planilhas"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden lg:inline">Google Sheets</span>
+              <span className="hidden sm:inline">Google Planilha</span>
               {sheetsConfig.syncStatus === 'success' && (
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
               )}

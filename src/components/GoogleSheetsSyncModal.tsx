@@ -11,9 +11,12 @@ import {
   AlertCircle,
   Clock,
   Send,
+  Download,
+  Database,
 } from 'lucide-react';
-import { GoogleSheetsConfig, Transaction, FinancialSummary, CategoryBudget } from '../types';
+import { GoogleSheetsConfig, Transaction, FinancialSummary, CategoryBudget, Member } from '../types';
 import { generateGoogleAppsScriptCode } from '../services/storage';
+import { exportToGoogleSheetsBackup } from '../services/exportService';
 
 interface GoogleSheetsSyncModalProps {
   isOpen: boolean;
@@ -23,6 +26,8 @@ interface GoogleSheetsSyncModalProps {
   transactions: Transaction[];
   summary: FinancialSummary;
   budgets: CategoryBudget[];
+  members?: Member[];
+  periodName?: string;
   onSyncWithSheets: (scriptUrl: string) => Promise<{ success: boolean; message: string }>;
 }
 
@@ -34,6 +39,8 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   transactions,
   summary,
   budgets,
+  members = [],
+  periodName = 'Geral',
   onSyncWithSheets,
 }) => {
   const [scriptUrl, setScriptUrl] = useState(config.scriptUrl || '');
@@ -42,7 +49,8 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ success: boolean; message: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'config' | 'code' | 'tutorial'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'code' | 'tutorial' | 'backup'>('config');
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
 
   if (!isOpen) return null;
 
@@ -52,6 +60,12 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
     navigator.clipboard.writeText(appsScriptCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2500);
+  };
+
+  const handleDownloadBackup = () => {
+    exportToGoogleSheetsBackup(transactions, summary, budgets, members, periodName);
+    setDownloadSuccess(true);
+    setTimeout(() => setDownloadSuccess(false), 3000);
   };
 
   const handleSaveAndSync = async () => {
@@ -138,6 +152,18 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
           >
             <Code className="w-3.5 h-3.5" />
             <span>Código do Google Apps Script</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('backup')}
+            className={`pb-2.5 px-3 font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+              activeTab === 'backup'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Baixar Backup Planilha (.xlsx)</span>
           </button>
           <button
             type="button"
@@ -252,6 +278,27 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 </div>
               )}
 
+              {/* Instant Backup Shortcut Banner */}
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="font-bold text-emerald-900 flex items-center gap-1.5 text-xs">
+                    <Database className="w-4 h-4 text-emerald-700" />
+                    <span>Quer fazer o backup agora sem configurar script?</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    Você pode baixar o arquivo <strong>.xlsx formatado para o Google Planilhas</strong> com todas as receitas, despesas, faturas e membros em 5 abas.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadBackup}
+                  className="shrink-0 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{downloadSuccess ? 'Baixado com Sucesso!' : 'Baixar Arquivo de Backup'}</span>
+                </button>
+              </div>
+
               {/* Actions */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                 <button
@@ -356,6 +403,92 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 >
                   Entendi, ir para Configuração
                 </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'backup' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm mb-1">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                  <span>Backup Completo para Google Planilhas</span>
+                </div>
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  Gere um arquivo de planilha consolidado contendo todos os seus dados organizados em 5 abas prontas para serem abertas ou importadas no <strong>Google Planilhas</strong> (Google Sheets) ou Excel:
+                </p>
+
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2 bg-white rounded-lg border border-emerald-100 flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</span>
+                    <div>
+                      <strong className="text-slate-800">Aba Resumo:</strong>
+                      <span className="text-slate-500 block">Saldo em caixa, saldo projetado, taxa de economia e alertas.</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-white rounded-lg border border-emerald-100 flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</span>
+                    <div>
+                      <strong className="text-slate-800">Aba Transações:</strong>
+                      <span className="text-slate-500 block">Todas as receitas, despesas e faturas cadastradas no sistema.</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-white rounded-lg border border-emerald-100 flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
+                    <div>
+                      <strong className="text-slate-800">Aba Contas a Pagar:</strong>
+                      <span className="text-slate-500 block">Pendências com data de vencimento, multas previstas e código de barras.</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-white rounded-lg border border-emerald-100 flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">4</span>
+                    <div>
+                      <strong className="text-slate-800">Aba Orçamentos:</strong>
+                      <span className="text-slate-500 block">Limites por categoria, valor gasto e percentual atingido.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Steps to import into Google Sheets */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5">
+                <div className="font-bold text-slate-800 text-xs">
+                  Como abrir este backup no Google Planilhas:
+                </div>
+                <ol className="list-decimal list-inside text-[11px] text-slate-600 space-y-1">
+                  <li>Clique no botão verde abaixo para <strong>Baixar o Arquivo de Backup</strong> (.xlsx).</li>
+                  <li>Acesse <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-blue-600 underline font-semibold">sheets.new</a> no seu navegador ou abra o seu <strong>Google Drive</strong>.</li>
+                  <li>No menu superior do Google Planilhas, vá em <strong>Arquivo &gt; Importar &gt; Fazer upload</strong> e arraste o arquivo baixado.</li>
+                  <li>Todas as 5 abas e seus cálculos aparecerão prontos no seu Google Drive!</li>
+                </ol>
+              </div>
+
+              {/* Action Button */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                <div className="text-[11px] text-slate-500">
+                  Total de {transactions.length} lançamento(s) incluído(s) no backup.
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 sm:flex-none px-4 py-2 text-slate-600 hover:text-slate-800 text-xs"
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadBackup}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md transition-all"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>{downloadSuccess ? '✓ Backup Baixado com Sucesso!' : 'Baixar Arquivo de Backup Google Planilhas'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}

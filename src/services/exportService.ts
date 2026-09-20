@@ -312,6 +312,115 @@ export const exportToExcel = (
 };
 
 // ==========================================
+// 2.1 GOOGLE SHEETS / PLANILHA BACKUP
+// ==========================================
+export const exportToGoogleSheetsBackup = (
+  transactions: Transaction[],
+  summary: FinancialSummary,
+  budgets: CategoryBudget[],
+  members: Member[],
+  periodName: string
+) => {
+  const wb = XLSX.utils.book_new();
+  const memberMap = new Map(members.map((m) => [m.id, m.name]));
+
+  // Aba 1: Resumo_Executivo
+  const resumoData = [
+    ['BACKUP GOOGLE PLANILHAS - CONTROLE FINANCEIRO COMPARTILHADO'],
+    ['Período de Referência:', periodName],
+    ['Gerado em:', new Date().toLocaleString('pt-BR')],
+    ['Destino:', 'Abrir ou Importar diretamente no Google Planilhas (drive.google.com / sheets.new)'],
+    [''],
+    ['INDICADOR FINANCEIRO', 'VALOR (R$)', 'STATUS / DETALHE'],
+    ['Entradas Realizadas (Recebidas)', summary.entradasTotal, 'Receitas já recebidas no mês'],
+    ['Saídas Realizadas (Pagas)', summary.saidasTotal, 'Despesas já pagas'],
+    ['Falta Pagar (A Vencer / Vencido)', summary.faltaPagarTotal, 'Contas e faturas pendentes'],
+    ['Falta Receber (Esperado)', summary.faltaReceberTotal, 'Receitas a receber'],
+    [''],
+    ['SALDO ATUAL EM CAIXA', summary.saldoAtual, summary.saldoAtual >= 0 ? 'Positivo' : 'Negativo'],
+    ['SALDO PROJETADO FINAL', summary.saldoProjetado, summary.saldoProjetado >= 0 ? 'Superávit Previsto' : 'Déficit Previsto'],
+    ['TAXA DE ECONOMIA / MARGEM', `${summary.taxaPoupanca.toFixed(1)}%`, 'Percentual poupado'],
+    ['FATURAS EM ATRASO / RISCO', summary.faturasVencidasTotal, `${summary.faturasVencidasCount} conta(s) com risco de juros`],
+  ];
+  const wsResumo = XLSX.utils.aoa_to_sheet(resumoData);
+  XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
+
+  // Aba 2: Transacoes
+  const txRows = transactions.map((t) => ({
+    'ID': t.id,
+    'Tipo': t.type === 'entrada' ? 'Receita (Entrada)' : t.type === 'saida' ? 'Despesa (Saída)' : t.type === 'falta_pagar' ? 'Falta Pagar (Pendente)' : 'Falta Receber (Pendente)',
+    'Descrição': t.description,
+    'Valor (R$)': t.amount,
+    'Categoria': t.category,
+    'Data Competência': t.date,
+    'Data Vencimento': t.dueDate || '-',
+    'Data Pagamento': t.paidDate || '-',
+    'Status': t.status.toUpperCase(),
+    'Membro Responsável': memberMap.get(t.memberId) || 'Geral',
+    'Conta': t.account,
+    'Modo Pagamento': t.paymentMode === 'parcelado' ? 'Parcelado' : t.paymentMode === 'recorrente' ? 'Recorrente' : 'À Vista',
+    'Parcela': t.paymentMode === 'parcelado' && t.installmentTotal ? `${t.installmentCurrent || 1}/${t.installmentTotal}` : '-',
+    'Multa Prevista (R$)': t.finePenaltyEstimated || 0,
+    'Cartão de Crédito': t.isCreditCard ? 'Sim' : 'Não',
+    'Código de Barras': t.invoiceBarcode || '',
+    'Observações': t.notes || '',
+  }));
+  const wsTransactions = XLSX.utils.json_to_sheet(txRows);
+  XLSX.utils.book_append_sheet(wb, wsTransactions, 'Transacoes');
+
+  // Aba 3: Pendencias_Pagar
+  const pendencias = transactions
+    .filter((t) => t.type === 'falta_pagar')
+    .map((t) => ({
+      'Conta / Fatura': t.description,
+      'Valor (R$)': t.amount,
+      'Vencimento': t.dueDate || '-',
+      'Status': t.status.toUpperCase(),
+      'Responsável': memberMap.get(t.memberId) || 'Geral',
+      'Categoria': t.category,
+      'Conta Pagamento': t.account,
+      'Multa Estimada (R$)': t.finePenaltyEstimated || 0,
+      'Linha Digitável / Barras': t.invoiceBarcode || '',
+      'Notas': t.notes || '',
+    }));
+  const wsPendencias = XLSX.utils.json_to_sheet(pendencias);
+  XLSX.utils.book_append_sheet(wb, wsPendencias, 'Contas_a_Pagar');
+
+  // Aba 4: Orcamentos
+  const orcamentos = budgets
+    .filter((b) => b.type === 'despesa')
+    .map((b) => {
+      const gasto = transactions
+        .filter((t) => t.category === b.category && (t.type === 'saida' || t.type === 'falta_pagar'))
+        .reduce((sum, item) => sum + item.amount, 0);
+      return {
+        'Categoria': b.category,
+        'Limite Mensal (R$)': b.monthlyLimit,
+        'Gasto / Comprometido (R$)': gasto,
+        'Saldo Disponível (R$)': b.monthlyLimit - gasto,
+        '% Utilizado': `${b.monthlyLimit > 0 ? ((gasto / b.monthlyLimit) * 100).toFixed(1) : 0}%`,
+        'Situação': gasto > b.monthlyLimit ? 'ESTOURADO' : gasto > b.monthlyLimit * 0.85 ? 'ALERTA' : 'DENTRO DO LIMITE',
+      };
+    });
+  const wsOrcamentos = XLSX.utils.json_to_sheet(orcamentos);
+  XLSX.utils.book_append_sheet(wb, wsOrcamentos, 'Orcamentos');
+
+  // Aba 5: Membros
+  const membrosRows = members.map((m) => ({
+    'ID': m.id,
+    'Nome': m.name,
+    'Papel': m.role,
+    'E-mail': m.email || '',
+    'Telefone': m.phone || '',
+  }));
+  const wsMembros = XLSX.utils.json_to_sheet(membrosRows);
+  XLSX.utils.book_append_sheet(wb, wsMembros, 'Usuarios_Membros');
+
+  const nowStr = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(wb, `backup_google_planilhas_${periodName.replace(/\s+/g, '_')}_${nowStr}.xlsx`);
+};
+
+// ==========================================
 // 3. WHATSAPP CONSOLIDATED REPORT
 // ==========================================
 export const generateWhatsAppReportText = (

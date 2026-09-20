@@ -560,6 +560,8 @@ export default function App() {
         transactions={transactions}
         summary={summary}
         budgets={budgets}
+        members={members}
+        periodName={periodName}
         onSyncWithSheets={syncWithGoogleSheets}
       />
 
